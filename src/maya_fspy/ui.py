@@ -15,128 +15,158 @@ Reference distance:
     Along the y-axis
 """
 import os
-import platform
 from functools import partial
 
-import maya.OpenMayaUI as omui
-import pymel.core as pm
-from PySide6 import QtCore
-from PySide6 import QtWidgets
-from shiboken6 import wrapInstance
+import maya.cmds as cmds
 
 from .core import create_camera_and_plane
 
 __author__ = 'Justin Pedersen'
 __version__ = '1.2.0'
 
-WINDOW_NAME = "Fspy Importer - v{}".format(__version__)
-
-# Python 3 compatibility
-if platform.python_version_tuple()[0] == '3':
-    long = int
-
-
-def maya_main_window():
-    """
-    Return the Maya main window widget as a Python object
-    """
-    main_window_ptr = omui.MQtUtil.mainWindow()
-    return wrapInstance(long(main_window_ptr), QtWidgets.QWidget)
+WINDOW_NAME = "fspyImporter"
+WINDOW_TITLE = "Fspy Importer - v{}".format(__version__)
 
 
 def close_existing_windows():
     """
     Close any existing instances of the maya fspy window
     """
-    for child_window in maya_main_window().children():
-        if hasattr(child_window, 'windowTitle'):
-            if child_window.windowTitle() == WINDOW_NAME:
-                child_window.close()
-                child_window.deleteLater()
+    if cmds.window(WINDOW_NAME, exists=True):
+        cmds.deleteUI(WINDOW_NAME, window=True)
 
 
-class FSpyImporter(QtWidgets.QDialog):
+class FSpyImporter:
     """
     Main UI Class for the importer
     """
-    def __init__(self, parent=maya_main_window()):
-        super(FSpyImporter, self).__init__(parent)
+    def __init__(self):
+        self.window = None
+        self.json_field = None
+        self.image_field = None
+        
+        self.create_ui()
 
-        self.setWindowTitle(WINDOW_NAME)
-        self.setMinimumWidth(300)
-        self.setWindowFlags(self.windowFlags() ^ QtCore.Qt.WindowContextHelpButtonHint)
-
-        self.create_widgets()
-        self.create_layouts()
-        self.create_connections()
-
-    def create_widgets(self):
-        self.json_lineedit = QtWidgets.QLineEdit()
-        self.json_btn = QtWidgets.QPushButton("JSON")
-        self.image_lineedit = QtWidgets.QLineEdit()
-        self.image_btn = QtWidgets.QPushButton("Image")
-        self.import_btn = QtWidgets.QPushButton("Import")
-
-        self.json_btn.setFixedHeight(20)
-        self.json_lineedit.setFixedHeight(20)
-        self.image_btn.setFixedHeight(20)
-        self.image_lineedit.setFixedHeight(20)
-        self.import_btn.setMinimumHeight(40)
-
-    def create_layouts(self):
-        form_layout = QtWidgets.QFormLayout()
-        form_layout.addRow(self.json_btn, self.json_lineedit)
-        form_layout.addRow(self.image_btn, self.image_lineedit)
-
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.addWidget(self.import_btn)
-
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.addLayout(form_layout)
-        main_layout.addLayout(button_layout)
-
-    def create_connections(self):
-        self.json_btn.clicked.connect(partial(self.set_line_edit, self.json_lineedit, 'Import Json'))
-        self.image_btn.clicked.connect(partial(self.set_line_edit, self.image_lineedit, 'Import Image'))
-        self.import_btn.clicked.connect(self.generate_camera)
-
-    def set_line_edit(self, line_edit, caption):
+    def create_ui(self):
         """
-        Open a file dialog and set the result to the string inside a line edit.
-        :param line_edit: The target line edit.
-        :param str caption: The window caption.
+        Create the main UI
         """
-        # Setting up the dialog filters to only accept what is expected in that field to prevent user error.
-        if line_edit == self.json_lineedit:
-            file_filter = '*.json'
-        else:
-            all_image_formats = ['psd', 'als', 'avi', 'dds', 'gif', 'jpg', 'cin', 'iff', 'exr',
-                                 'png', 'eps', 'yuv', 'hdr', 'tga', 'tif', 'tim', 'bmp', 'xpm']
-            file_filter = 'All Image Files (*.{})'.format(' *.'.join([x for x in all_image_formats]))
+        # Close existing window if it exists
+        close_existing_windows()
+        
+        # Create main window
+        self.window = cmds.window(WINDOW_NAME, 
+                                  title=WINDOW_TITLE, 
+                                  widthHeight=(350, 120),
+                                  resizeToFitChildren=True)
+        
+        # Main column layout
+        main_layout = cmds.columnLayout(adjustableColumn=True, 
+                                        columnAttach=('both', 5),
+                                        rowSpacing=5,
+                                        columnWidth=340)
+        
+        # JSON file browser
+        self.json_field = cmds.textFieldButtonGrp(
+            label='JSON:', 
+            text='',
+            buttonLabel='Browse',
+            columnWidth3=[60, 200, 70],
+            buttonCommand=partial(self.browse_json_file)
+        )
+        
+        # Image file browser  
+        self.image_field = cmds.textFieldButtonGrp(
+            label='Image:', 
+            text='',
+            buttonLabel='Browse',
+            columnWidth3=[60, 200, 70],
+            buttonCommand=partial(self.browse_image_file)
+        )
+        
+        # Separator
+        cmds.separator(height=10, style='in')
+        
+        # Import button
+        cmds.button(label='Import', 
+                    height=30,
+                    command=partial(self.generate_camera))
+        
+        # Show window
+        cmds.showWindow(self.window)
 
-        filename = pm.fileDialog2(fileMode=1, caption=caption, fileFilter=file_filter)
-        if filename:
-            line_edit.setText(filename[0])
+    def browse_json_file(self, *args):
+        """
+        Open file dialog for JSON files
+        """
+        file_filter = "JSON Files (*.json);;All Files (*.*)"
+        file_path = cmds.fileDialog2(
+            fileMode=1,
+            caption="Select JSON File",
+            fileFilter=file_filter
+        )
+        
+        if file_path:
+            cmds.textFieldButtonGrp(self.json_field, edit=True, text=file_path[0])
 
-    def generate_camera(self):
+    def browse_image_file(self, *args):
+        """
+        Open file dialog for image files
+        """
+        all_image_formats = ['psd', 'als', 'avi', 'dds', 'gif', 'jpg', 'cin', 'iff', 'exr',
+                             'png', 'eps', 'yuv', 'hdr', 'tga', 'tif', 'tim', 'bmp', 'xpm']
+        file_filter = 'All Image Files (*.{});;All Files (*.*)'.format(' *.'.join([x for x in all_image_formats]))
+        
+        file_path = cmds.fileDialog2(
+            fileMode=1,
+            caption="Select Image File", 
+            fileFilter=file_filter
+        )
+        
+        if file_path:
+            cmds.textFieldButtonGrp(self.image_field, edit=True, text=file_path[0])
+
+    def generate_camera(self, *args):
         """
         Main function to generate the camera and image plane from UI.
         """
-        # Making sure no one put a .json file in the JSON field
-        if os.path.splitext(self.json_lineedit.text())[-1].lower() != '.json':
-            return pm.warning('The JSON field only accepts .json file formats')
-
-        if self.json_lineedit and self.image_lineedit:
-            create_camera_and_plane(self.json_lineedit.text(), self.image_lineedit.text())
-        else:
-            pm.warning('Please set a JSON and image path.')
+        json_path = cmds.textFieldButtonGrp(self.json_field, query=True, text=True)
+        image_path = cmds.textFieldButtonGrp(self.image_field, query=True, text=True)
+        
+        # Validate JSON file
+        if not json_path or os.path.splitext(json_path)[-1].lower() != '.json':
+            cmds.warning('The JSON field only accepts .json file formats')
+            return
+        
+        # Validate image file
+        if not image_path:
+            cmds.warning('Please set an image path.')
+            return
+            
+        # Validate both files exist
+        if not os.path.exists(json_path):
+            cmds.warning('JSON file does not exist: {}'.format(json_path))
+            return
+            
+        if not os.path.exists(image_path):
+            cmds.warning('Image file does not exist: {}'.format(image_path))
+            return
+        
+        # Create camera and image plane
+        try:
+            result = create_camera_and_plane(json_path, image_path)
+            cmds.confirmDialog(
+                title='Success',
+                message='Camera and image plane created successfully!',
+                button=['OK']
+            )
+        except Exception as e:
+            cmds.warning('Error creating camera: {}'.format(str(e)))
 
 
 def maya_fspy_ui():
     """
     Open the maya fspy ui.
     """
-    close_existing_windows()
-    fspy_importer_dialog = FSpyImporter()
-    fspy_importer_dialog.show()
+    fspy_importer = FSpyImporter()
+    return fspy_importer
