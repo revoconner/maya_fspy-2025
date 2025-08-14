@@ -45,6 +45,9 @@ Reference distance: ***Along the y axis***
 ## Tested on Maya 2018 -> 2022 (Py2 and Py3)
 If you are able to test on any other maya versions please let me know so I can update it here.
 
+## Updated for Maya 2025+
+Uses maya.cmds and maya native UI instead of pymel and pyside
+
 ## Finally
 Huge thanks to the peeps over at https://github.com/stuffmatic/fSpy for this kickass application! 
 Also big thanks to Jascha Wohlkinger for helping me out with some of the matrix stuff on the Maya side!
